@@ -5,6 +5,17 @@
 @php
 $money = fn ($amount) => number_format((float) $amount, 0, ',', '.').'đ';
 $payment = $payment ?? [];
+$customerName = trim((string) ($payment['customer_name'] ?? ''));
+$customerPhone = trim((string) ($payment['customer_phone'] ?? ''));
+$customerEmail = trim((string) ($payment['customer_email'] ?? ''));
+$paymentConfig = [
+    'checkStatusUrl' => $payment['check_status_url'] ?? null,
+    'applyCouponUrl' => $payment['apply_coupon_url'] ?? null,
+    'historyUrl' => $payment['history_url'] ?? route('profile.history-booking.index'),
+    'currentStatus' => $payment['order_status'] ?? '',
+    'serverGrandTotal' => (float) ($payment['server_grand_total'] ?? $payment['grand_total'] ?? 0),
+    'csrfToken' => csrf_token(),
+];
 @endphp
 
 @section('content')
@@ -26,7 +37,7 @@ $payment = $payment ?? [];
     </div>
     @endif
 
-    <form action="{{ $payment['process_url'] }}" method="POST" class="payment-layout">
+    <form action="{{ $payment['process_url'] ?? '#' }}" method="POST" class="payment-layout" data-payment-form>
       @csrf
 
       <div class="payment-left">
@@ -35,17 +46,35 @@ $payment = $payment ?? [];
 
           <div class="payment-form-group">
             <label>Họ và tên</label>
-            <input type="text" value="{{ $payment['customer_name'] ?? 'Khách hàng' }}" readonly>
+            <input
+              type="text"
+              name="customer_name"
+              value="{{ old('customer_name', $customerName) }}"
+              placeholder="Nhập họ và tên"
+              @if ($customerName !== '') readonly @endif
+            >
           </div>
 
           <div class="payment-form-group">
             <label>Số điện thoại</label>
-            <input type="text" value="{{ $payment['customer_phone'] ?? 'Đang cập nhật' }}" readonly>
+            <input
+              type="text"
+              name="customer_phone"
+              value="{{ old('customer_phone', $customerPhone) }}"
+              placeholder="Nhập số điện thoại"
+              @if ($customerPhone !== '') readonly @endif
+            >
           </div>
 
           <div class="payment-form-group">
             <label>Email</label>
-            <input type="email" value="{{ $payment['customer_email'] ?? 'Đang cập nhật' }}" readonly>
+            <input
+              type="email"
+              name="customer_email"
+              value="{{ old('customer_email', $customerEmail) }}"
+              placeholder="Nhập email"
+              @if ($customerEmail !== '') readonly @endif
+            >
           </div>
         </div>
 
@@ -96,6 +125,7 @@ $payment = $payment ?? [];
               <small>Ghi nhận phương thức, nhân viên sẽ xác nhận sau</small>
             </span>
           </label>
+
         </div>
       </div>
 
@@ -163,25 +193,25 @@ $payment = $payment ?? [];
             </label>
 
             <div class="discount-form">
-              <input
-                type="text"
-                name="coupon_code"
-                value="{{ old('coupon_code', $payment['coupon_code'] ?? '') }}"
-                placeholder="Nhập mã (VD: WELCOME50)"
-              >
+              <input type="text" id="couponCodeInput" name="coupon_code"
+                value="{{ old('coupon_code', $payment['coupon_code'] ?? '') }}" placeholder="Nhập mã (VD: WELCOME50)"
+                data-coupon-input>
+              <button type="button" data-apply-coupon>Áp dụng</button>
             </div>
+
+            <p class="discount-message" data-coupon-message hidden></p>
           </div>
 
           <div class="order-price-row discount-row">
             <span>Giảm giá</span>
-            <strong>-{{ $money($payment['discount_amount'] ?? 0) }}</strong>
+            <strong data-discount-amount>-{{ $money($payment['discount_amount'] ?? 0) }}</strong>
           </div>
 
           <div class="order-divider"></div>
 
           <div class="order-total">
             <span>Tổng cộng</span>
-            <strong>{{ $money($payment['grand_total'] ?? 0) }}</strong>
+            <strong data-grand-total>{{ $money($payment['grand_total'] ?? 0) }}</strong>
           </div>
 
           <button type="submit" class="confirm-order-btn">
@@ -201,104 +231,8 @@ $payment = $payment ?? [];
 @endsection
 
 @push('scripts')
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const paymentMethods = document.querySelectorAll('.payment-method');
-
-  paymentMethods.forEach(function(method) {
-    method.addEventListener('click', function() {
-      paymentMethods.forEach(function(item) {
-        item.classList.remove('active');
-      });
-
-      this.classList.add('active');
-
-      const radio = this.querySelector('input[type="radio"]');
-      radio.checked = true;
-    });
-  });
-
-  const checkStatusUrl = @json(route('payment.check_status', ['bookingId' => $payment['booking_id'] ?? $order->booking_id]));
-  const paymentHistoryUrl = @json(route('profile.history-booking.index'));
-  const currentStatus = String(@json($order->status) ?? '');
-  const currentTotal = Number(@json((float) ($payment['grand_total'] ?? $order->grand_total ?? 0)));
-  let pollingStopped = false;
-
-  function stopPolling() {
-    pollingStopped = true;
-    clearInterval(pollingInterval);
-  }
-
-  function lockPaymentForm() {
-    document
-      .querySelectorAll('.payment-layout button, .payment-layout input, .payment-layout select, .payment-layout textarea')
-      .forEach(function(control) {
-        control.disabled = true;
-      });
-  }
-
-  function reloadPaymentPage(message) {
-    stopPolling();
-    lockPaymentForm();
-    alert(message);
-    window.location.reload();
-  }
-
-  async function fetchOrderStatus() {
-    if (pollingStopped) {
-      return;
-    }
-
-    try {
-      const response = await fetch(checkStatusUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        credentials: 'same-origin',
-      });
-
-      const data = await response.json().catch(function() {
-        return null;
-      });
-
-      if (response.status === 401) {
-        reloadPaymentPage('Phiên đăng nhập đã hết hạn. Trang sẽ được tải lại.');
-        return;
-      }
-
-      if (response.status === 404 || (data && data.exists === false)) {
-        stopPolling();
-        lockPaymentForm();
-        alert('Đơn hàng không còn tồn tại trên hệ thống.');
-        window.location.href = paymentHistoryUrl;
-        return;
-      }
-
-      if (!response.ok || !data || data.exists !== true) {
-        return;
-      }
-
-      if (String(data.status ?? '') !== currentStatus) {
-        reloadPaymentPage('Trạng thái đơn hàng đã thay đổi từ hệ thống khác. Trang sẽ tự động tải lại để cập nhật.');
-        return;
-      }
-
-      const nextTotal = Number(data.grand_total);
-
-      if (!Number.isNaN(nextTotal) && Math.abs(nextTotal - currentTotal) >= 0.01) {
-        reloadPaymentPage('Tổng tiền đơn hàng vừa được cập nhật. Vui lòng kiểm tra lại trước khi thanh toán.');
-      }
-    } catch (error) {
-      console.error('Lỗi khi kiểm tra trạng thái đơn hàng:', error);
-    }
-  }
-
-  const pollingInterval = setInterval(fetchOrderStatus, 5000);
-
-  window.addEventListener('beforeunload', function() {
-    stopPolling();
-  });
-});
+<script type="application/json" id="payment-page-config">
+@json($paymentConfig)
 </script>
+<script src="{{ asset('assets/client/js/payment.js') }}"></script>
 @endpush

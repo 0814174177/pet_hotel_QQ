@@ -61,6 +61,7 @@ Route::controller(PaymentController::class)->group(function () {
     Route::get('/payment', 'create')->name('payment.create');
     Route::get('/payment/check-status/{bookingId}', 'checkStatus')->name('payment.check_status');
     Route::get('/payment/booking/{bookingId}', 'show')->name('payment.show');
+    Route::post('/payment/booking/{bookingId}/coupon', 'applyCoupon')->name('payment.apply_coupon');
     Route::post('/payment/booking/{bookingId}', 'process')->name('payment.process');
     Route::get('/payment/success', 'success')->name('payment.success');
     Route::get('/payment/failed', 'failed')->name('payment.failed');

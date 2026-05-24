@@ -19,6 +19,7 @@ Route::controller(PaymentController::class)->group(function () {
     Route::get('/booking/{bookingId}', 'show')->name('show');
 
     // Xử lý thanh toán cho đơn đặt phòng
+    Route::post('/booking/{bookingId}/coupon', 'applyCoupon')->name('apply_coupon');
     Route::post('/booking/{bookingId}', 'process')->name('process');
 
     // Trang thông báo thanh toán thành công

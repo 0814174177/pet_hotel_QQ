@@ -13,6 +13,41 @@ class Booking extends Model
 
     protected $guarded = [];
 
+    protected static function booted(): void
+    {
+        static::updated(function (Booking $booking): void {
+            if (! $booking->wasChanged('status')) {
+                return;
+            }
+
+            $status = strtoupper((string) $booking->status);
+
+            if ($status === 'CHECKED_IN') {
+                $booking->syncRoomStatus('IN_USE');
+
+                return;
+            }
+
+            if (! in_array($status, ['CHECKED_OUT', 'COMPLETED', 'CANCELLED'], true)) {
+                return;
+            }
+
+            $booking->syncRoomStatus('AVAILABLE');
+        });
+    }
+
+    private function syncRoomStatus(string $status): void
+    {
+        $this->bookingRooms()
+            ->with('room')
+            ->get()
+            ->each(function (BookingRoom $bookingRoom) use ($status): void {
+                if ($bookingRoom->room && $bookingRoom->room->status !== 'MAINTENANCE') {
+                    $bookingRoom->room->update(['status' => $status]);
+                }
+            });
+    }
+
     public function customer()
     {
         return $this->belongsTo(Customer::class, 'customer_id', 'customer_id');

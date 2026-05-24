@@ -75,9 +75,34 @@ class PaymentController extends Controller
 
     public function failed(Request $request): JsonResponse
     {
+        $customer = $this->currentCustomer($request);
+        $bookingId = $request->query('booking_id');
+
+        if ($bookingId) {
+            DB::transaction(function () use ($customer, $bookingId): void {
+                $booking = $customer->bookings()
+                    ->where('booking_id', $bookingId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $booking) {
+                    return;
+                }
+
+                Order::where('booking_id', $booking->booking_id)
+                    ->where('customer_id', $customer->customer_id)
+                    ->whereIn('status', ['PENDING', 'PROCESSING'])
+                    ->update(['status' => 'CANCELLED']);
+
+                if (in_array($booking->status, ['PENDING', 'CONFIRMED'], true)) {
+                    $booking->update(['status' => 'CANCELLED']);
+                }
+            });
+        }
+
         return response()->json([
-            'message' => 'Thanh toan khong thanh cong.',
-            'booking_id' => $request->query('booking_id'),
+            'message' => 'Thanh toan da huy. Phong da duoc mo lai neu booking chua hoan tat.',
+            'booking_id' => $bookingId,
         ], 422);
     }
 

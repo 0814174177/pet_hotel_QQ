@@ -78,6 +78,16 @@
     outline: none;
 }
 
+.payment-form-group input:not([readonly]) {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    color: #111111;
+}
+
+.payment-form-group input[readonly] {
+    cursor: default;
+}
+
 /* Payment methods */
 
 .payment-method {
@@ -230,7 +240,7 @@
 
 .discount-form {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
 }
 
@@ -257,6 +267,25 @@
 .discount-form button:hover {
     border-color: #f59e0b;
     color: #f59e0b;
+}
+
+.discount-form button:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.discount-message {
+    margin: 10px 0 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.discount-message.success {
+    color: #15803d;
+}
+
+.discount-message.error {
+    color: #dc2626;
 }
 
 .discount-row {

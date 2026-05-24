@@ -856,12 +856,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function syncHiddenFields() {
         const selectedPets = Array.from(state.selectedPets.keys());
-        const selectedServices = new Set();
+        const serviceInputs = [];
 
         selectedPets.forEach((petId) => {
-            (state.petServices[petId] || []).forEach((serviceId) =>
-                selectedServices.add(serviceId),
-            );
+            (state.petServices[petId] || []).forEach((serviceId) => {
+                serviceInputs.push(
+                    `<input type="hidden" name="service_pet_ids[${escapeHtml(petId)}][]" value="${escapeHtml(serviceId)}">`,
+                );
+            });
         });
 
         hiddenFields.innerHTML = [
@@ -869,10 +871,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 (petId) =>
                     `<input type="hidden" name="pet_ids[]" value="${escapeHtml(petId)}">`,
             ),
-            ...Array.from(selectedServices).map(
-                (serviceId) =>
-                    `<input type="hidden" name="service_ids[]" value="${escapeHtml(serviceId)}">`,
-            ),
+            ...serviceInputs,
         ].join("");
     }
 

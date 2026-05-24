@@ -22,6 +22,9 @@ class StoreBookingRequest extends FormRequest
             'pet_ids.*' => ['required', 'integer', 'distinct', 'exists:pet,pet_id'],
             'service_ids' => ['nullable', 'array'],
             'service_ids.*' => ['required', 'integer', 'distinct', 'exists:services,service_id'],
+            'service_pet_ids' => ['nullable', 'array'],
+            'service_pet_ids.*' => ['nullable', 'array'],
+            'service_pet_ids.*.*' => ['required', 'integer', 'exists:services,service_id'],
             'booking_action' => ['nullable', 'in:pay,hold'],
         ];
     }
@@ -80,6 +83,36 @@ class StoreBookingRequest extends FormRequest
             ->all();
     }
 
+    public function servicePetIds(array $petIds): array
+    {
+        $selectedPetIds = collect($petIds)
+            ->map(fn (int|string $petId): int => (int) $petId)
+            ->unique()
+            ->values();
+
+        $mappedServices = collect($this->validated()['service_pet_ids'] ?? [])
+            ->mapWithKeys(fn (array $serviceIds, int|string $petId): array => [
+                (int) $petId => collect($serviceIds)
+                    ->map(fn (int|string $serviceId): int => (int) $serviceId)
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ])
+            ->only($selectedPetIds->all())
+            ->filter(fn (array $serviceIds): bool => $serviceIds !== [])
+            ->all();
+
+        if ($mappedServices !== []) {
+            return $mappedServices;
+        }
+
+        $legacyServiceIds = $this->serviceIds();
+
+        return $legacyServiceIds === [] ? [] : [
+            $selectedPetIds->first() => $legacyServiceIds,
+        ];
+    }
+
     public function isHoldOnly(): bool
     {
         return ($this->validated()['booking_action'] ?? 'pay') === 'hold';
@@ -97,6 +130,7 @@ class StoreBookingRequest extends FormRequest
             'checkin_expected_at' => $this->checkinAt(),
             'checkout_expected_at' => $this->checkoutAt(),
             'service_ids' => $this->serviceIds(),
+            'service_pet_ids' => $this->servicePetIds($petIds),
         ];
     }
 }
