@@ -22,15 +22,8 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/**
- * Class BookingRepository
- * Chịu trách nhiệm xử lý toàn bộ logic truy xuất, thêm mới và tính toán dữ liệu liên quan đến Booking.
- */
 class BookingRepository implements BookingRepositoryInterface
 {
-    /**
-     * Lấy thông tin Customer dựa trên User đang đăng nhập.
-     */
     public function customerForUser(?User $user): ?Customer
     {
         if (! $user) {
@@ -40,9 +33,6 @@ class BookingRepository implements BookingRepositoryInterface
         return $user->customer ?: Customer::where('user_id', $user->id)->first();
     }
 
-    /**
-     * Khởi tạo dữ liệu tổng hợp để render ra View Form Đặt phòng.
-     */
     public function bookingFormViewData(string $branchId, bool $isAuthenticated, ?User $user = null): array
     {
         $branches = $this->bookingBranches();
@@ -65,16 +55,12 @@ class BookingRepository implements BookingRepositoryInterface
         ];
     }
 
-    /**
-     * Lấy danh sách các chi nhánh đang hoạt động kèm theo hình ảnh ngẫu nhiên.
-     */
     public function bookingBranches(): array
     {
         $branches = Branch::where('is_active', 1)
             ->orderBy('branch_name')
             ->get();
 
-        // Sử dụng dữ liệu giả lập nếu trong DB chưa có chi nhánh nào
         if ($branches->isEmpty()) {
             return $this->fallbackBranches();
         }
@@ -97,9 +83,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Cung cấp dữ liệu chi nhánh giả lập (Fallback data) khi hệ thống chưa có dữ liệu thực tế.
-     */
     private function fallbackBranches(): array
     {
         $branchImages = $this->randomBranchImages(4);
@@ -152,9 +135,6 @@ class BookingRepository implements BookingRepositoryInterface
         ];
     }
 
-    /**
-     * Lấy danh sách lịch sử đặt phòng của một khách hàng, sắp xếp mới nhất lên đầu.
-     */
     public function bookingHistoryItems(Customer $customer): array
     {
         return Booking::with($this->bookingRelations())
@@ -166,9 +146,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Tìm một Booking cụ thể của một khách hàng dựa trên Booking ID.
-     */
     public function findCustomerBooking(Customer $customer, string $bookingId): ?Booking
     {
         return Booking::with($this->bookingRelations())
@@ -177,9 +154,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->first();
     }
 
-    /**
-     * Tổng hợp toàn bộ dữ liệu chi tiết của một Booking để hiển thị ra View.
-     */
     public function bookingDetail(Booking $booking): array
     {
         $summary = $this->bookingSummary($booking);
@@ -204,9 +178,6 @@ class BookingRepository implements BookingRepositoryInterface
         ];
     }
 
-    /**
-     * Kiểm tra xem một loại phòng tại một chi nhánh có còn phòng trống vật lý không.
-     */
     public function roomTypeAvailable(string|int $branchId, string|int $typeRoomId): bool
     {
         return Room::where('branch_id', $branchId)
@@ -215,9 +186,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->exists();
     }
 
-    /**
-     * Kiểm tra xem khoảng thời gian lưu trú yêu cầu có khả dụng cho loại phòng cụ thể không.
-     */
     public function dateRangeAvailable(
         string|int $branchId,
         string|int $typeRoomId,
@@ -234,7 +202,6 @@ class BookingRepository implements BookingRepositoryInterface
             return false;
         }
 
-        // Kiểm tra từng ngày trong khoảng thời gian khách muốn đặt
         for ($date = $checkinDate->copy(); $date->lt($checkoutDate); $date->addDay()) {
             if ($date->lt($today) || $unavailableDates->has($date->toDateString())) {
                 return false;
@@ -244,9 +211,6 @@ class BookingRepository implements BookingRepositoryInterface
         return true;
     }
 
-    /**
-     * Kiểm tra quyền của User hiện tại có được phép đặt phòng cho danh sách thú cưng truyền vào hay không.
-     */
     public function petsCanBeBookedBy(?User $user, array $petIds): bool
     {
         if (! $user || $petIds === []) {
@@ -260,14 +224,9 @@ class BookingRepository implements BookingRepositoryInterface
             return false;
         }
 
-        // Sử dụng Laravel Gate (Policy) để xác thực quyền
         return $pets->every(fn (Pet $pet): bool => Gate::forUser($user)->allows('book', $pet));
     }
 
-    /**
-     * Kiểm tra xem thú cưng có đang bị kẹt ở một booking khác hay không (trùng lịch).
-     * Trả về thông báo lỗi nếu có trùng lặp, trả về null nếu hợp lệ.
-     */
     private function petBookingConflictMessage(array $petIds, string $checkin, string $checkout): ?string
     {
         $uniquePetIds = collect($petIds)
@@ -279,7 +238,6 @@ class BookingRepository implements BookingRepositoryInterface
             return null;
         }
 
-        // Trường hợp 1: Thú cưng hiện đang CHECKED_IN và chưa CHECKED_OUT
         $currentRoomConflicts = DB::table('booking_room_pet')
             ->join('booking_room', 'booking_room_pet.booking_room_id', '=', 'booking_room.booking_room_id')
             ->join('booking', 'booking_room.booking_id', '=', 'booking.booking_id')
@@ -307,7 +265,6 @@ class BookingRepository implements BookingRepositoryInterface
         $checkinAt = Carbon::parse($checkin);
         $checkoutAt = Carbon::parse($checkout);
 
-        // Trường hợp 2: Thú cưng có một Booking khác nằm đè lên khoảng thời gian muốn đặt
         $conflicts = DB::table('booking_room_pet')
             ->join('booking_room', 'booking_room_pet.booking_room_id', '=', 'booking_room.booking_room_id')
             ->join('booking', 'booking_room.booking_id', '=', 'booking.booking_id')
@@ -348,9 +305,6 @@ class BookingRepository implements BookingRepositoryInterface
         );
     }
 
-    /**
-     * Tiền xử lý, kiểm tra các luồng Validation trước khi thực sự tạo Booking vào Database.
-     */
     public function createPendingBookingForUser(?User $user, array $bookingData): Booking
     {
         if (! $user) {
@@ -388,7 +342,6 @@ class BookingRepository implements BookingRepositoryInterface
             throw new Exception('checkin_expected_at|Khoảng thời gian này không còn phòng trống. Vui lòng chọn ngày khác.');
         }
 
-        // Bắt đầu gọi hàm xử lý Transaction sau khi qua mọi Validation
         return $this->assignRoomAndServicesWithLock([
             ...$bookingData,
             'customer_id' => $customer->customer_id,
@@ -396,20 +349,14 @@ class BookingRepository implements BookingRepositoryInterface
         ]);
     }
 
-    /**
-     * Thực thi việc tạo Booking, gán Phòng và gán Dịch vụ vào cơ sở dữ liệu.
-     * Sử dụng DB Transaction và Pessimistic Locking (lockForUpdate) để chống lỗi Double-Booking (Concurrency).
-     */
     public function assignRoomAndServicesWithLock(array $data): Booking
     {
         return DB::transaction(function () use ($data): Booking {
             try {
-                // Khóa các record thú cưng để đảm bảo không ai tác động trong lúc đang xử lý
                 $pets = Pet::whereIn('pet_id', $data['pet_ids'] ?? [$data['pet_id']])
                     ->lockForUpdate()
                     ->get();
 
-                // Kiểm tra lại conflict một lần nữa bên trong Transaction cho an toàn tuyệt đối
                 if ($message = $this->petBookingConflictMessage(
                     $data['pet_ids'] ?? [$data['pet_id']],
                     $data['checkin_expected_at'],
@@ -418,8 +365,6 @@ class BookingRepository implements BookingRepositoryInterface
                     throw new Exception('pet_ids|'.$message);
                 }
 
-                // Tìm 1 phòng thỏa mãn loại phòng, còn trống, và không bị trùng lịch booking khác
-                // Khóa record phòng này lại (lockForUpdate)
                 $room = Room::where('branch_id', $data['branch_id'])
                     ->where('type_room_id', $data['room_type'])
                     ->where('status', 'AVAILABLE')
@@ -436,10 +381,8 @@ class BookingRepository implements BookingRepositoryInterface
                     throw new Exception('NO_ROOM|Không tìm thấy phòng trống phù hợp tại chi nhánh đã chọn.');
                 }
 
-                // Kiểm tra ràng buộc cân nặng, số lượng của thú cưng so với phòng
                 $this->assertPetsFitRoomType($pets, $room);
 
-                // Tạo Booking chính
                 $booking = Booking::create([
                     'customer_id' => $data['customer_id'],
                     'branch_id' => $data['branch_id'],
@@ -448,14 +391,12 @@ class BookingRepository implements BookingRepositoryInterface
                     'status' => 'PENDING',
                 ]);
 
-                // Liên kết Booking với Phòng
                 $bookingRoom = BookingRoom::create([
                     'booking_id' => $booking->booking_id,
                     'room_id' => $room->room_id,
                     'assigned_at' => now(),
                 ]);
 
-                // Đưa thú cưng vào phòng
                 foreach ($data['pet_ids'] ?? [$data['pet_id']] as $petId) {
                     BookingRoomPet::create([
                         'booking_room_id' => $bookingRoom->booking_room_id,
@@ -463,7 +404,6 @@ class BookingRepository implements BookingRepositoryInterface
                     ]);
                 }
 
-                // Tính toán tiền dịch vụ và lưu danh sách dịch vụ đi kèm
                 $serviceTotal = 0.0;
                 $servicePetIds = $data['service_pet_ids'] ?? [];
                 $serviceIds = collect($servicePetIds)
@@ -492,7 +432,6 @@ class BookingRepository implements BookingRepositoryInterface
                     }
                 }
 
-                // Cập nhật lại tổng tiền cho Booking
                 $booking->update([
                     'total_amount' => $this->estimatedBookingTotal($room, $booking, $serviceTotal),
                 ]);
@@ -510,9 +449,6 @@ class BookingRepository implements BookingRepositoryInterface
         });
     }
 
-    /**
-     * Xác thực xem danh sách thú cưng có phù hợp với cấu hình của loại phòng (số lượng, cân nặng) không.
-     */
     private function assertPetsFitRoomType($pets, Room $room): void
     {
         $typeRoom = $room->typeRoom;
@@ -570,9 +506,6 @@ class BookingRepository implements BookingRepositoryInterface
         ));
     }
 
-    /**
-     * Mảng các Relations Eager Loading thường dùng của Booking.
-     */
     private function bookingRelations(): array
     {
         return [
@@ -585,9 +518,6 @@ class BookingRepository implements BookingRepositoryInterface
         ];
     }
 
-    /**
-     * Format dữ liệu tóm tắt của một Booking (Dùng cho danh sách lịch sử).
-     */
     private function bookingSummary(Booking $booking): array
     {
         $status = strtoupper((string) $booking->status);
@@ -617,9 +547,6 @@ class BookingRepository implements BookingRepositoryInterface
         ];
     }
 
-    /**
-     * Phân loại nhóm cho lịch sử booking (Đã hoàn thành, đang active, hoặc đã hủy).
-     */
     private function bookingHistoryGroup(Booking $booking): string
     {
         $status = strtoupper((string) $booking->status);
@@ -635,9 +562,6 @@ class BookingRepository implements BookingRepositoryInterface
         return 'active';
     }
 
-    /**
-     * Lấy các thuộc tính hiển thị (nhãn, CSS class, icon) tương ứng với trạng thái Booking.
-     */
     private function bookingStatusMeta(string $status): array
     {
         return match ($status) {
@@ -650,9 +574,6 @@ class BookingRepository implements BookingRepositoryInterface
         };
     }
 
-    /**
-     * Lấy trạng thái hiển thị của Booking (Ưu tiên trạng thái đã thanh toán nếu Order hoàn thành).
-     */
     private function bookingDisplayStatus(Booking $booking): string
     {
         return $this->bookingHasCompletedOrder($booking)
@@ -660,9 +581,6 @@ class BookingRepository implements BookingRepositoryInterface
             : strtoupper((string) $booking->status);
     }
 
-    /**
-     * Kiểm tra Booking đã có Order nào được thanh toán chưa.
-     */
     private function bookingHasCompletedOrder(Booking $booking): bool
     {
         return $booking->orders->contains(
@@ -670,9 +588,6 @@ class BookingRepository implements BookingRepositoryInterface
         );
     }
 
-    /**
-     * Lấy danh sách tên tất cả thú cưng trong một Booking (gộp từ Phòng và Dịch vụ).
-     */
     private function bookingPetNames(Booking $booking): array
     {
         $roomPets = $booking->bookingRooms
@@ -687,9 +602,6 @@ class BookingRepository implements BookingRepositoryInterface
         return $roomPets->merge($servicePets)->unique()->values()->all();
     }
 
-    /**
-     * Lấy danh sách tên loại phòng trong một Booking.
-     */
     private function bookingRoomTypesFor(Booking $booking): array
     {
         return $booking->bookingRooms
@@ -700,9 +612,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Định dạng dữ liệu các phòng của một Booking để hiển thị.
-     */
     private function bookingRoomsFor(Booking $booking): array
     {
         return $booking->bookingRooms
@@ -716,9 +625,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Định dạng dữ liệu thú cưng trong các phòng của Booking.
-     */
     private function bookingPetsFor(Booking $booking): array
     {
         return $booking->bookingRooms
@@ -736,9 +642,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Định dạng danh sách dịch vụ đăng ký kèm theo của Booking.
-     */
     private function bookingServicesFor(Booking $booking): array
     {
         return $booking->bookingServicePets
@@ -752,9 +655,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Ước tính tổng tiền Booking (Giá phòng x số đêm) + tiền dịch vụ.
-     */
     private function estimatedBookingTotal(Room $room, Booking $booking, float $serviceTotal = 0): float
     {
         $roomPrice = (float) ($room->typeRoom?->base_price_per_day ?? 0);
@@ -762,9 +662,6 @@ class BookingRepository implements BookingRepositoryInterface
         return ($roomPrice * max(1, $this->bookingNights($booking))) + $serviceTotal;
     }
 
-    /**
-     * Trả về tổng tiền chính xác của Booking (lấy từ cột total_amount, Order, hoặc tính toán lại).
-     */
     private function bookingTotalAmount(Booking $booking): float
     {
         if (filled($booking->total_amount)) {
@@ -788,9 +685,6 @@ class BookingRepository implements BookingRepositoryInterface
         return $roomTotal + $serviceTotal;
     }
 
-    /**
-     * Tính số đêm lưu trú (sử dụng Carbon để tính khoảng cách giữa checkin và checkout).
-     */
     private function bookingNights(Booking $booking): int
     {
         try {
@@ -802,9 +696,6 @@ class BookingRepository implements BookingRepositoryInterface
         }
     }
 
-    /**
-     * Lấy danh sách và trạng thái phòng trống theo từng Loại Phòng tại một chi nhánh.
-     */
     private function bookingRoomTypes(string $branchId): array
     {
         return TypeRoom::where('is_active', 1)
@@ -841,9 +732,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Lấy danh sách tất cả các Dịch vụ đang hoạt động.
-     */
     private function bookingServices(): array
     {
         try {
@@ -863,9 +751,6 @@ class BookingRepository implements BookingRepositoryInterface
         }
     }
 
-    /**
-     * Trả về dữ liệu các ngày "Hết phòng" (Unavailable Dates) cho giao diện lịch (Calendar).
-     */
     private function bookingAvailability(string $branchId): array
     {
         return TypeRoom::where('is_active', 1)
@@ -878,9 +763,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Tính toán mảng các ngày (Date String) mà một loại phòng tại chi nhánh đã kín chỗ hoàn toàn.
-     */
     private function fullyBookedDatesForType(string|int $branchId, string|int $typeRoomId): array
     {
         $totalPhysicalRooms = Room::where('branch_id', $branchId)
@@ -894,7 +776,6 @@ class BookingRepository implements BookingRepositoryInterface
         $bookedRoomsByDate = [];
         $today = Carbon::today();
 
-        // Lấy danh sách các phòng đang được sử dụng trong các Booking chưa Checkout
         $activeBookingRooms = DB::table('booking_room')
             ->join('booking', 'booking_room.booking_id', '=', 'booking.booking_id')
             ->join('room', 'booking_room.room_id', '=', 'room.room_id')
@@ -905,7 +786,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->select(['booking_room.room_id', 'booking.checkin_expected_at', 'booking.checkout_expected_at'])
             ->get();
 
-        // Gom nhóm số lượng phòng đã đặt theo từng ngày
         foreach ($activeBookingRooms as $bookingRoom) {
             try {
                 $start = Carbon::parse($bookingRoom->checkin_expected_at)->startOfDay();
@@ -923,7 +803,6 @@ class BookingRepository implements BookingRepositoryInterface
             }
         }
 
-        // Lọc ra các ngày có số lượng phòng đã đặt lớn hơn hoặc bằng tổng số phòng vật lý có sẵn
         return collect($bookedRoomsByDate)
             ->filter(fn (array $roomIds): bool => count($roomIds) >= $totalPhysicalRooms)
             ->keys()
@@ -932,9 +811,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Lấy danh sách thú cưng của khách hàng, đồng thời kiểm tra xem thú cưng có đang ở tại khách sạn không.
-     */
     private function customerPets(?Customer $customer): array
     {
         if (! $customer) {
@@ -963,9 +839,6 @@ class BookingRepository implements BookingRepositoryInterface
         }
     }
 
-    /**
-     * Kiểm tra nhanh một thú cưng cụ thể có đang trong một Booking ở trạng thái CHECKED_IN hay không.
-     */
     private function petIsCurrentlyInRoom(Pet $pet): bool
     {
         return DB::table('booking_room_pet')
@@ -977,9 +850,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->exists();
     }
 
-    /**
-     * Trộn ngẫu nhiên (Shuffle) và lấy ra số lượng ảnh chi nhánh mong muốn.
-     */
     private function randomBranchImages(int $count): array
     {
         if ($count <= 0) {
@@ -999,9 +869,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Quét thư mục public để lấy danh sách đường dẫn hình ảnh chi nhánh.
-     */
     private function branchImageUrls(): array
     {
         static $urls = null;
@@ -1036,9 +903,6 @@ class BookingRepository implements BookingRepositoryInterface
             ->all();
     }
 
-    /**
-     * Tạo chuỗi class CSS ngẫu nhiên/cố định cho icon Loại phòng dựa trên Modulo của ID.
-     */
     private function roomIconClass(TypeRoom $typeRoom): string
     {
         return match ((int) $typeRoom->type_room_id % 3) {
@@ -1048,9 +912,6 @@ class BookingRepository implements BookingRepositoryInterface
         };
     }
 
-    /**
-     * Format ngày bắt đầu và kết thúc của một Booking (vd: 01/01/2024 - 05/01/2024).
-     */
     private function formatDateRange(Booking $booking): string
     {
         try {
@@ -1062,9 +923,6 @@ class BookingRepository implements BookingRepositoryInterface
         }
     }
 
-    /**
-     * Format khoảng thời gian báo lỗi khi thú cưng bị trùng lịch đặt phòng.
-     */
     private function formatConflictDateRange(mixed $checkin, mixed $checkout): string
     {
         try {
@@ -1076,9 +934,6 @@ class BookingRepository implements BookingRepositoryInterface
         }
     }
 
-    /**
-     * Hàm hỗ trợ Format chuỗi DateTime.
-     */
     private function formatDateTime(mixed $value): string
     {
         try {
@@ -1088,21 +943,17 @@ class BookingRepository implements BookingRepositoryInterface
         }
     }
 
-    /**
-     * Map tên Tiếng Việt cho loài vật nuôi.
-     */
     private function displaySpecies(?string $species): string
     {
         return match (strtoupper((string) $species)) {
             'DOG' => 'Chó',
             'CAT' => 'Mèo',
+            'BIRD' => 'Chim',
+            'RABBIT' => 'Thỏ',
             default => 'Khác',
         };
     }
 
-    /**
-     * Map giới tính Tiếng Việt cho vật nuôi.
-     */
     private function displaySex(?string $sex): string
     {
         return match (strtoupper((string) $sex)) {
