@@ -8,6 +8,8 @@ class Order extends Model
 {
     protected $table = 'orders';
     protected $primaryKey = 'order_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 
@@ -44,5 +46,15 @@ class Order extends Model
     public function details()
     {
         return $this->hasMany(OrderDetail::class, 'order_id', 'order_id');
+    }
+
+    public function orderDetails()
+    {
+        return $this->details();
+    }
+
+    public function payment()
+    {
+        return $this->hasOne(Payment::class, 'order_id', 'order_id');
     }
 }

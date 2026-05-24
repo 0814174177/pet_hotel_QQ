@@ -11,10 +11,13 @@ return new class extends Migration
     {
         Schema::create('category_product', function (Blueprint $table) {
             $table->id('product_category_id');
-            $table->string('product_category_name', 100)->unique();
-            $table->boolean('is_active')->default(true);
+            $table->string('product_category_name', 100);
+            $table->tinyInteger('is_active')->default(1);
             $table->timestamps();
+            $table->unique('product_category_name', 'uq_cat_product_name');
         });
+
+        DB::statement('ALTER TABLE category_product ADD CONSTRAINT ck_cat_product_active CHECK (is_active IN (0,1))');
     }
 
     public function down(): void

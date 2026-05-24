@@ -13,11 +13,14 @@ return new class extends Migration
             $table->id('branch_id');
             $table->string('branch_name', 100);
             $table->string('phone', 20)->nullable();
-            $table->string('email', 254)->nullable()->unique();
+            $table->string('email', 254)->nullable();
             $table->string('address', 255);
-            $table->boolean('is_active')->default(true);
+            $table->tinyInteger('is_active')->default(1);
             $table->timestamps();
+            $table->unique('email', 'uq_branch_email');
         });
+
+        DB::statement('ALTER TABLE branch ADD CONSTRAINT ck_branch_active CHECK (is_active IN (0,1))');
     }
 
     public function down(): void

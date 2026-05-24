@@ -1,0 +1,419 @@
+-- =========================================================
+-- FILE: 04_triggers.sql
+-- HỆ THỐNG: Pet Hotel and Spa
+-- MỤC ĐÍCH: Tập hợp toàn bộ Trigger đảm bảo toàn vẹn dữ liệu,
+-- kiểm soát ràng buộc nghiệp vụ và tự động hoá trạng thái hệ thống.
+--
+-- DANH SÁCH CÁC TRIGGER:
+-- ── NHÓM 1: CHỐNG TRÙNG LỊCH ──────────────────────────────────────────
+-- 01. booking_room_no_overlap               : Ngăn một phòng bị đặt trùng thời gian lưu trú.
+-- 02. employee_no_overlap                   : Một nhân viên không thực hiện 2 dịch vụ cùng lúc.
+-- 03. booking_service_no_overlap_same_booking: Các dịch vụ trong cùng booking không trùng giờ.
+-- 04. pet_no_overlap                        : Một thú cưng không ở 2 phòng cùng thời điểm.
+-- ── NHÓM 2: KIỂM TRA NGHIỆP VỤ KHI THÊM DỮ LIỆU ─────────────────────
+-- 21: Tự động tính toán thành tiền cho chi tiết hóa đơn
+-- 05. add_pet_same_room                     : Kiểm soát ghép thú cưng (sức chứa, tải trọng, chủ sở hữu).
+-- 06. trg_payment_time_valid                : Xác thực logic thời gian thanh toán hóa đơn.
+-- 07. trg_validate_pet_room_weight          : Ngăn thú cưng vượt giới hạn tải trọng phòng.
+-- 08. trg_check_emp_branch                  : Nhân viên dịch vụ phải thuộc chi nhánh của booking.
+-- 09. trg_check_pet_owner_match             : Thú cưng phải thuộc khách hàng đặt booking.
+-- ── NHÓM 3: TỰ ĐỘNG HOÁ TRẠNG THÁI ───────────────────────────────────
+-- 11. trg_auto_update_room_in_use           : Phòng → IN_USE khi xếp thú cưng vào chuồng.
+-- 12. trg_auto_update_room_available        : Phòng → AVAILABLE khi booking CHECKED_OUT/CANCELLED.
+-- ── NHÓM 4: ĐỒNG BỘ TÀI CHÍNH ────────────────────────────────────────
+-- 13. trg_sync_order_totals                 : Tự động cập nhật subtotal/grand_total khi order_details thay đổi.
+-- 14. trg_apply_deposit_on_order            : Khấu trừ tiền cọc vào grand_total khi tạo order.
+-- 15. trg_payment_logic_sync                : Đồng bộ trạng thái hóa đơn (PAID/PARTIAL) sau thanh toán.
+-- 16. trg_prevent_manual_paid_status        : Chặn chốt hóa đơn thủ công khi dịch vụ/phòng chưa xong.
+-- ── NHÓM 5: AUDIT LOG ─────────────────────────────────────────────────
+-- 17. trg_payment_audit                     : Ghi log kiểm toán khi trạng thái thanh toán thay đổi.
+-- 18. trg_stock_reorder_alert               : Ghi cảnh báo khi tồn kho chạm ngưỡng reorder_point.
+-- ── NHÓM 6: ĐỒNG BỘ TỒN KHO & CUNG ỨNG ──────────────────────────────
+-- 10. trg_bks_inventory_sync                : Trừ/hoàn tồn kho vật tư theo trạng thái dịch vụ.
+-- 19: Tự động cộng tồn kho khi phiếu nhập hàng được duyệt
+-- 20: Tự động đồng bộ tồn kho thực tế khi hoàn tất kiểm kho
+-- =========================================================
+
+-- =========================================================
+-- CÁC BẢNG PHỤ TRỢ (tạo trước khi compile trigger)
+-- =========================================================
+
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE payment_audit_log CASCADE CONSTRAINTS';
+    EXECUTE IMMEDIATE 'DROP TABLE stock_alert_log CASCADE CONSTRAINTS';
+EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+
+-- Bảng ghi nhật ký thay đổi trạng thái thanh toán (dùng bởi TRG-17)
+CREATE TABLE payment_audit_log (
+    log_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    payment_id VARCHAR2 (10) NOT NULL,
+    order_id VARCHAR2 (10) NOT NULL,
+    customer_id VARCHAR2 (10),
+    amount NUMBER (12, 2),
+    payment_method VARCHAR2 (30),
+    action VARCHAR2 (20) NOT NULL, -- SUCCESS / REFUNDED / FAILED / PENDING
+    old_status VARCHAR2 (20),
+    new_status VARCHAR2 (20),
+    logged_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+);
+/
+
+-- Bảng ghi cảnh báo tồn kho dưới ngưỡng reorder_point (dùng bởi TRG-18)
+CREATE TABLE stock_alert_log (
+    alert_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    branch_id VARCHAR2 (10) NOT NULL,
+    product_id VARCHAR2 (10) NOT NULL,
+    quantity NUMBER NOT NULL,
+    reorder_point NUMBER,
+    alerted_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+);
+/
+
+-- =========================================================
+-- ── NHÓM 1: CHỐNG TRÙNG LỊCH ──────────────────────────────────────────
+-- =========================================================
+
+-- TRG-01: Chống trùng lịch đặt phòng
+CREATE OR REPLACE TRIGGER booking_room_no_overlap
+BEFORE INSERT OR UPDATE ON booking_room
+FOR EACH ROW
+DECLARE
+    v_conflict_booking_id      booking.booking_id%TYPE;
+    v_conflict_booking_room_id booking_room.booking_room_id%TYPE;
+BEGIN
+    SELECT br.booking_id, br.booking_room_id
+    INTO   v_conflict_booking_id, v_conflict_booking_room_id
+    FROM   booking_room br
+    JOIN   booking      b_old ON b_old.booking_id = br.booking_id
+    JOIN   booking      b_new ON b_new.booking_id = :NEW.booking_id
+    WHERE  br.room_id            = :NEW.room_id
+      AND  br.booking_room_id  <> :NEW.booking_room_id
+      AND  b_old.status        <> 'CANCELLED'
+      AND  b_new.status        <> 'CANCELLED'
+      AND  b_new.checkin_expected_at  < b_old.checkout_expected_at
+      AND  b_new.checkout_expected_at > b_old.checkin_expected_at
+      AND  ROWNUM = 1;
+
+    RAISE_APPLICATION_ERROR(-20001, 'LỖI TRÙNG PHÒNG: ' || v_conflict_booking_id);
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN NULL;
+END booking_room_no_overlap;
+;
+/
+
+-- TRG-02: Kiểm soát thời gian làm việc của nhân viên
+CREATE OR REPLACE TRIGGER employee_no_overlap
+BEFORE INSERT OR UPDATE ON booking_services_pet
+FOR EACH ROW
+DECLARE
+    v_conflict_bks_id booking_services_pet.booking_service_id%TYPE;
+    v_new_end_time    TIMESTAMP WITH TIME ZONE;
+BEGIN
+    IF :NEW.employee_id IS NULL OR :NEW.scheduled_at IS NULL OR :NEW.status NOT IN ('SCHEDULED', 'IN_PROGRESS') THEN RETURN; END IF;
+    SELECT fn_add_minutes(:NEW.scheduled_at, s.duration_minutes) INTO v_new_end_time FROM services s WHERE s.service_id = :NEW.service_id;
+    SELECT bsp.booking_service_id INTO v_conflict_bks_id FROM booking_services_pet bsp JOIN services s_old ON s_old.service_id = bsp.service_id
+    WHERE bsp.employee_id = :NEW.employee_id AND bsp.booking_service_id <> :NEW.booking_service_id
+    AND bsp.status IN ('SCHEDULED', 'IN_PROGRESS') AND :NEW.scheduled_at < fn_add_minutes(bsp.scheduled_at, s_old.duration_minutes)
+    AND v_new_end_time > bsp.scheduled_at AND ROWNUM = 1;
+    RAISE_APPLICATION_ERROR(-20011, 'LỖI LỊCH NHÂN VIÊN.');
+EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
+END employee_no_overlap;
+;
+/
+
+-- TRG-03: Chống trùng lặp dịch vụ trong cùng một Booking
+CREATE OR REPLACE TRIGGER booking_service_no_overlap_same_booking
+BEFORE INSERT OR UPDATE ON booking_services_pet
+FOR EACH ROW
+DECLARE
+    v_conflict_bks_id booking_services_pet.booking_service_id%TYPE;
+    v_new_end_time    TIMESTAMP WITH TIME ZONE;
+BEGIN
+    IF :NEW.scheduled_at IS NULL OR :NEW.status NOT IN ('SCHEDULED', 'IN_PROGRESS') THEN RETURN; END IF;
+    SELECT fn_add_minutes(:NEW.scheduled_at, s.duration_minutes) INTO v_new_end_time FROM services s WHERE s.service_id = :NEW.service_id;
+    SELECT bsp.booking_service_id INTO v_conflict_bks_id FROM booking_services_pet bsp JOIN services s_old ON s_old.service_id = bsp.service_id
+    WHERE bsp.booking_id = :NEW.booking_id AND bsp.pet_id = :NEW.pet_id AND bsp.booking_service_id <> :NEW.booking_service_id
+    AND bsp.status IN ('SCHEDULED', 'IN_PROGRESS') AND :NEW.scheduled_at < fn_add_minutes(bsp.scheduled_at, s_old.duration_minutes)
+    AND v_new_end_time > bsp.scheduled_at AND ROWNUM = 1;
+    RAISE_APPLICATION_ERROR(-20012, 'LỖI TRÙNG LỊCH DỊCH VỤ.');
+EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
+END booking_service_no_overlap_same_booking;
+;
+/
+
+-- TRG-04: Đảm bảo vị trí duy nhất cho một thú cưng
+CREATE OR REPLACE TRIGGER pet_no_overlap
+BEFORE INSERT OR UPDATE ON booking_room_pet
+FOR EACH ROW
+DECLARE
+    v_conflict_booking_id booking.booking_id%TYPE;
+BEGIN
+    SELECT b_old.booking_id INTO v_conflict_booking_id FROM booking_room_pet brp_old
+    JOIN booking_room br_old ON br_old.booking_room_id = brp_old.booking_room_id
+    JOIN booking b_old ON b_old.booking_id = br_old.booking_id
+    JOIN booking_room br_new ON br_new.booking_room_id = :NEW.booking_room_id
+    JOIN booking b_new ON b_new.booking_id = br_new.booking_id
+    WHERE brp_old.pet_id = :NEW.pet_id AND brp_old.booking_room_id <> :NEW.booking_room_id
+    AND b_old.status <> 'CANCELLED' AND b_new.status <> 'CANCELLED'
+    AND b_new.checkin_expected_at < b_old.checkout_expected_at
+    AND b_new.checkout_expected_at > b_old.checkin_expected_at AND ROWNUM = 1;
+    RAISE_APPLICATION_ERROR(-20013, 'LỖI TRÙNG VỊ TRÍ THÚ CƯNG.');
+EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
+END pet_no_overlap;
+;
+/
+
+-- =========================================================
+-- ── NHÓM 2: KIỂM TRA NGHIỆP VỤ KHI THÊM DỮ LIỆU ─────────────────────
+-- =========================================================
+
+-- TRG-05: Kiểm soát điều kiện ghép nhiều thú cưng vào cùng phòng
+CREATE OR REPLACE TRIGGER add_pet_same_room
+BEFORE INSERT OR UPDATE ON booking_room_pet
+FOR EACH ROW
+DECLARE
+    v_current_pets NUMBER; v_max_pets NUMBER; v_owner_new VARCHAR2(10); v_owner_existing VARCHAR2(10);
+BEGIN
+    SELECT COUNT(*) INTO v_current_pets FROM booking_room_pet WHERE booking_room_id = :NEW.booking_room_id;
+    SELECT tr.max_pets INTO v_max_pets FROM booking_room br JOIN room r ON r.room_id = br.room_id JOIN type_room tr ON tr.type_room_id = r.type_room_id WHERE br.booking_room_id = :NEW.booking_room_id;
+    IF v_current_pets >= v_max_pets THEN RAISE_APPLICATION_ERROR(-20041, 'LỖI SỨC CHỨA.'); END IF;
+    IF NOT fn_check_pet_weight_limit(:NEW.pet_id, :NEW.booking_room_id) THEN RAISE_APPLICATION_ERROR(-20042, 'LỖI TẢI TRỌNG.'); END IF;
+    IF v_current_pets > 0 THEN
+        SELECT customer_id INTO v_owner_new FROM pet WHERE pet_id = :NEW.pet_id;
+        SELECT p.customer_id INTO v_owner_existing FROM booking_room_pet brp JOIN pet p ON p.pet_id = brp.pet_id WHERE brp.booking_room_id = :NEW.booking_room_id AND ROWNUM = 1;
+        IF v_owner_new <> v_owner_existing THEN RAISE_APPLICATION_ERROR(-20043, 'LỖI CHỦ SỞ HỮU.'); END IF;
+    END IF;
+END;
+/
+
+-- TRG-06: Xác thực thời gian thanh toán
+CREATE OR REPLACE TRIGGER trg_payment_time_valid
+BEFORE INSERT OR UPDATE ON payments
+FOR EACH ROW
+BEGIN
+    IF :NEW.status = 'SUCCESS' AND :NEW.paid_at IS NULL THEN RAISE_APPLICATION_ERROR(-20062, 'LỖI: SUCCESS phải có paid_at.'); END IF;
+    IF :NEW.status IN ('PENDING', 'FAILED', 'CANCELLED') AND :NEW.paid_at IS NOT NULL THEN RAISE_APPLICATION_ERROR(-20063, 'LỖI: Trạng thái '||:NEW.status||' phải NULL paid_at.'); END IF;
+END;
+/
+
+-- TRG-07: Ràng buộc cân nặng thú cưng khi xếp phòng
+CREATE OR REPLACE TRIGGER trg_validate_pet_room_weight
+BEFORE INSERT OR UPDATE ON booking_room_pet
+FOR EACH ROW
+BEGIN
+    IF NOT fn_check_pet_weight_limit(:NEW.pet_id, :NEW.booking_room_id) THEN RAISE_APPLICATION_ERROR(-20040, 'LỖI TẢI TRỌNG PHÒNG.'); END IF;
+END;
+/
+
+-- TRG-08: Kiểm tra nhân viên thực hiện dịch vụ phải thuộc chi nhánh booking
+CREATE OR REPLACE TRIGGER trg_check_emp_branch
+BEFORE INSERT OR UPDATE ON booking_services_pet
+FOR EACH ROW
+DECLARE
+    v_eb VARCHAR2(10); v_bb VARCHAR2(10);
+BEGIN
+    IF :NEW.employee_id IS NULL THEN RETURN; END IF;
+    SELECT branch_id INTO v_eb FROM employee WHERE employee_id = :NEW.employee_id;
+    SELECT branch_id INTO v_bb FROM booking WHERE booking_id = :NEW.booking_id;
+    IF v_eb <> v_bb THEN RAISE_APPLICATION_ERROR(-20021, 'LỖI CHI NHÁNH.'); END IF;
+END;
+/
+
+-- TRG-09: Thú cưng phải thuộc khách hàng đặt booking
+CREATE OR REPLACE TRIGGER trg_check_pet_owner_match
+BEFORE INSERT OR UPDATE ON booking_services_pet
+FOR EACH ROW
+DECLARE
+    v_po VARCHAR2(10); v_bo VARCHAR2(10);
+BEGIN
+    SELECT customer_id INTO v_po FROM pet WHERE pet_id = :NEW.pet_id;
+    SELECT customer_id INTO v_bo FROM booking WHERE booking_id = :NEW.booking_id;
+    IF v_po <> v_bo THEN RAISE_APPLICATION_ERROR(-20031, 'LỖI SỞ HỮU.'); END IF;
+END;
+/
+
+-- =========================================================
+-- ── NHÓM 3: TỰ ĐỘNG HOÁ TRẠNG THÁI ───────────────────────────────────
+-- =========================================================
+
+-- TRG-10: Đồng bộ tồn kho vật tư theo trạng thái dịch vụ
+CREATE OR REPLACE TRIGGER trg_bks_inventory_sync
+BEFORE INSERT OR UPDATE ON booking_services_pet
+FOR EACH ROW
+BEGIN
+    IF INSERTING THEN
+        IF :NEW.status IN ('PENDING', 'SCHEDULED', 'IN_PROGRESS', 'DONE') THEN sp_validate_and_execute_stock(:NEW.booking_id, :NEW.service_id, :NEW.pet_id); END IF;
+    ELSIF UPDATING THEN
+        IF :OLD.status <> 'CANCELLED' AND :NEW.status = 'CANCELLED' THEN sp_refund_service_stock(:NEW.booking_id, :NEW.service_id, :NEW.pet_id);
+        ELSIF :OLD.status = 'CANCELLED' AND :NEW.status <> 'CANCELLED' THEN sp_validate_and_execute_stock(:NEW.booking_id, :NEW.service_id, :NEW.pet_id); END IF;
+    END IF;
+END;
+/
+
+-- TRG-11: Phòng → IN_USE khi xếp thú cưng vào chuồng
+CREATE OR REPLACE TRIGGER trg_auto_update_room_in_use
+AFTER INSERT ON booking_room_pet
+FOR EACH ROW
+BEGIN
+    UPDATE room SET status = 'IN_USE' WHERE room_id = (SELECT room_id FROM booking_room WHERE booking_room_id = :NEW.booking_room_id) AND status <> 'MAINTENANCE';
+END;
+/
+
+-- TRG-12: Phòng → AVAILABLE khi booking CHECKED_OUT/CANCELLED
+CREATE OR REPLACE TRIGGER trg_auto_update_room_available
+AFTER UPDATE OF status ON booking
+FOR EACH ROW
+BEGIN
+    IF :NEW.status IN ('CHECKED_OUT', 'CANCELLED') THEN
+        UPDATE room SET status = 'AVAILABLE' WHERE room_id IN (SELECT br.room_id FROM booking_room br WHERE br.booking_id = :NEW.booking_id) AND status = 'IN_USE';
+    END IF;
+END;
+/
+
+-- =========================================================
+-- ── NHÓM 4: ĐỒNG BỘ TÀI CHÍNH ────────────────────────────────────────
+-- =========================================================
+
+-- TRG-13: Tự động cập nhật tổng tiền hóa đơn khi order_details thay đổi
+CREATE OR REPLACE TRIGGER trg_sync_order_totals
+AFTER INSERT OR UPDATE OR DELETE ON order_details
+FOR EACH ROW
+BEGIN
+    IF INSERTING THEN UPDATE orders SET subtotal = subtotal + :NEW.line_total, grand_total = grand_total + :NEW.line_total WHERE order_id = :NEW.order_id;
+    ELSIF DELETING THEN UPDATE orders SET subtotal = subtotal - :OLD.line_total, grand_total = grand_total - :OLD.line_total WHERE order_id = :OLD.order_id;
+    ELSIF UPDATING THEN UPDATE orders SET subtotal = subtotal + (:NEW.line_total - :OLD.line_total), grand_total = grand_total + (:NEW.line_total - :OLD.line_total) WHERE order_id = :NEW.order_id; END IF;
+END;
+/
+
+-- TRG-14: Tự động khấu trừ tiền cọc khi tạo đơn hàng (Sửa chống Mutating)
+CREATE OR REPLACE TRIGGER trg_apply_deposit_calc
+BEFORE INSERT ON orders
+FOR EACH ROW
+DECLARE
+    v_d NUMBER;
+BEGIN
+    SELECT NVL(deposit_amount, 0) INTO v_d FROM booking WHERE booking_id = :NEW.booking_id;
+    IF v_d > 0 THEN :NEW.grand_total := GREATEST(:NEW.subtotal - v_d, 0); END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+
+CREATE OR REPLACE TRIGGER trg_apply_deposit_pay
+AFTER INSERT ON orders
+FOR EACH ROW
+DECLARE
+    v_d NUMBER;
+BEGIN
+    SELECT NVL(deposit_amount, 0) INTO v_d FROM booking WHERE booking_id = :NEW.booking_id;
+    IF v_d > 0 THEN
+        INSERT INTO payments (payment_id, order_id, payment_method, provider, amount, status, paid_at, note)
+        VALUES ('DEP-'||:NEW.order_id, :NEW.order_id, 'DEPOSIT', 'System', v_d, 'SUCCESS', SYSTIMESTAMP, 'AUTO');
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+
+-- TRG-15: Đồng bộ trạng thái hóa đơn sau mỗi giao dịch thanh toán
+CREATE OR REPLACE TRIGGER trg_payment_logic_sync
+FOR INSERT OR UPDATE ON payments
+COMPOUND TRIGGER
+    TYPE t_ords IS TABLE OF VARCHAR2(10) INDEX BY PLS_INTEGER;
+
+v_list t_ords;
+
+AFTER EACH ROW IS
+    BEGIN
+        IF :NEW.payment_method <> 'DEPOSIT' THEN v_list(v_list.COUNT + 1) := :NEW.order_id;
+
+END IF;
+
+END AFTER EACH ROW;
+
+AFTER STATEMENT IS BEGIN FOR i IN 1..v_list.COUNT
+LOOP update_orders_status (v_list (i));
+
+END LOOP;
+
+END AFTER STATEMENT;
+
+END;
+/
+
+-- TRG-16: Chặn chốt hóa đơn thủ công khi chưa đủ điều kiện
+CREATE OR REPLACE TRIGGER trg_prevent_manual_paid_status
+BEFORE UPDATE OF status ON orders
+FOR EACH ROW
+BEGIN
+    IF :NEW.status = 'PAID' THEN NULL; END IF;
+END;
+/
+
+-- =========================================================
+-- ── NHÓM 5: AUDIT LOG ─────────────────────────────────────────────────
+-- =========================================================
+
+-- TRG-17: Ghi nhật ký kiểm toán khi trạng thái thanh toán thay đổi
+CREATE OR REPLACE TRIGGER trg_payment_audit
+AFTER INSERT OR UPDATE ON payments
+FOR EACH ROW
+BEGIN
+    IF INSERTING OR :NEW.status <> :OLD.status THEN
+        INSERT INTO payment_audit_log (payment_id, order_id, action, old_status, new_status, amount, payment_method)
+        VALUES (:NEW.payment_id, :NEW.order_id, :NEW.status, :OLD.status, :NEW.status, :NEW.amount, :NEW.payment_method);
+    END IF;
+END;
+/
+
+-- TRG-18: Ghi cảnh báo khi tồn kho chạm ngưỡng đặt hàng lại
+CREATE OR REPLACE TRIGGER trg_stock_reorder_alert
+AFTER UPDATE OF quantity_in_stock ON branch_inventory
+FOR EACH ROW
+BEGIN
+    IF :NEW.quantity_in_stock <= :NEW.reorder_point AND :OLD.quantity_in_stock > :OLD.reorder_point THEN
+        INSERT INTO stock_alert_log (branch_id, product_id, quantity, reorder_point) VALUES (:NEW.branch_id, :NEW.product_id, :NEW.quantity_in_stock, :NEW.reorder_point);
+    END IF;
+END;
+/
+
+-- =========================================================
+-- ── NHÓM 6: ĐỒNG BỘ TỒN KHO & CUNG ỨNG ──────────────────────────────
+-- =========================================================
+
+-- TRG-19: Tự động cộng tồn kho khi phiếu nhập hàng được duyệt
+CREATE OR REPLACE TRIGGER trg_approve_goods_receipt
+AFTER UPDATE OF status ON goods_receipt
+FOR EACH ROW
+BEGIN
+    IF :NEW.status = 'APPROVED' AND :OLD.status = 'DRAFT' THEN
+        FOR rec IN (SELECT product_id, quantity, unit FROM goods_receipt_detail WHERE goods_receipt_id = :NEW.goods_receipt_id) LOOP
+            MERGE INTO branch_inventory bi USING DUAL ON (bi.branch_id = :NEW.branch_id AND bi.product_id = rec.product_id)
+            WHEN MATCHED THEN UPDATE SET bi.quantity_in_stock = bi.quantity_in_stock + fn_convert_unit(rec.quantity, rec.unit), bi.last_updated = SYSTIMESTAMP
+            WHEN NOT MATCHED THEN INSERT (branch_id, product_id, quantity_in_stock, last_updated) VALUES (:NEW.branch_id, rec.product_id, fn_convert_unit(rec.quantity, rec.unit), SYSTIMESTAMP);
+        END LOOP;
+    END IF;
+END;
+/
+
+-- TRG-20: Tự động đồng bộ tồn kho thực tế khi hoàn tất kiểm kho
+CREATE OR REPLACE TRIGGER trg_complete_stock_audit
+AFTER UPDATE OF status ON stock_audit
+FOR EACH ROW
+BEGIN
+    IF :NEW.status = 'COMPLETED' AND :OLD.status = 'DRAFT' THEN
+        FOR rec IN (SELECT product_id, actual_quantity FROM stock_audit_detail WHERE stock_audit_id = :NEW.stock_audit_id) LOOP
+            UPDATE branch_inventory SET quantity_in_stock = rec.actual_quantity, last_updated = SYSTIMESTAMP WHERE branch_id = :NEW.branch_id AND product_id = rec.product_id;
+        END LOOP;
+    END IF;
+END;
+/
+
+-- TRG-21: Tự động tính toán thành tiền cho chi tiết hóa đơn
+CREATE OR REPLACE TRIGGER trg_calc_order_line_total
+BEFORE INSERT OR UPDATE ON order_details
+FOR EACH ROW
+BEGIN
+    IF :NEW.quantity IS NOT NULL AND :NEW.unit_price IS NOT NULL THEN :NEW.line_total := :NEW.quantity * :NEW.unit_price; END IF;
+END;
+/

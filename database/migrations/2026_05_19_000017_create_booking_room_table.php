@@ -11,14 +11,14 @@ return new class extends Migration
     {
         Schema::create('booking_room', function (Blueprint $table) {
             $table->id('booking_room_id');
-            $table->unsignedBigInteger('booking_id');
-            $table->unsignedBigInteger('room_id');
+            $table->bigInteger('booking_id');
+            $table->bigInteger('room_id');
             $table->dateTime('assigned_at');
             $table->text('notes')->nullable();
             $table->timestamps();
-            $table->unique(['booking_id', 'room_id']);
-            $table->foreign('booking_id')->references('booking_id')->on('booking')->cascadeOnUpdate()->cascadeOnDelete();
-            $table->foreign('room_id')->references('room_id')->on('room')->cascadeOnUpdate()->restrictOnDelete();
+            $table->unique(['booking_id', 'room_id'], 'uq_booking_room');
+            $table->foreign('booking_id', 'fk_bkr_booking')->references('booking_id')->on('booking')->cascadeOnDelete();
+            $table->foreign('room_id', 'fk_bkr_room')->references('room_id')->on('room');
         });
     }
 

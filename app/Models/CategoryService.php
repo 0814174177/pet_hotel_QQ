@@ -8,6 +8,8 @@ class CategoryService extends Model
 {
     protected $table = 'category_services';
     protected $primaryKey = 'service_category_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

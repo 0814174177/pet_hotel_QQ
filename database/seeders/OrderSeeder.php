@@ -50,8 +50,8 @@ class OrderSeeder extends Seeder
         ]);
 
         /*
-         * Trigger database-level sẽ tự tính lại line_total, subtotal, grand_total.
-         * Seeder vẫn truyền line_total đúng để tương thích check constraint.
+         * Oracle trigger work is deferred, so the seeder writes totals
+         * explicitly and keeps line_total compatible with the CHECK rules.
          */
         DB::table('order_details')->insert([
             [
@@ -112,8 +112,17 @@ class OrderSeeder extends Seeder
             ->where('order_id', 1)
             ->update([
                 'coupon_id' => 1,
+                'subtotal' => 420000,
                 'discount_amount' => 50000,
                 'grand_total' => 370000,
+                'updated_at' => $now,
+            ]);
+
+        DB::table('orders')
+            ->where('order_id', 2)
+            ->update([
+                'subtotal' => 520000,
+                'grand_total' => 520000,
                 'updated_at' => $now,
             ]);
 
@@ -140,13 +149,28 @@ class OrderSeeder extends Seeder
         ]);
 
         /*
-         * Nếu trigger set paid_at khi status COMPLETED đã tồn tại,
-         * trigger vẫn có thể tự set paid_at. Seeder cũng truyền paid_at để chắc chắn hợp lệ.
+         * The paid order needs paid_at because the Oracle CHECK constraint
+         * requires a payment timestamp for COMPLETED/PAID statuses.
          */
         DB::table('orders')->where('order_id', 1)->update([
             'status' => 'COMPLETED',
             'paid_at' => $now,
             'updated_at' => $now,
+        ]);
+
+        DB::table('payments')->insert([
+            [
+                'payment_id' => 1,
+                'order_id' => 1,
+                'payment_method' => 'CASH',
+                'provider' => null,
+                'amount' => 370000,
+                'status' => 'SUCCESS',
+                'paid_at' => $now,
+                'note' => 'Thanh toan mau cho order 1.',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
         ]);
     }
 }

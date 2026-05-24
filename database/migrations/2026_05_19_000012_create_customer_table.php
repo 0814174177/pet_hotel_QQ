@@ -11,12 +11,15 @@ return new class extends Migration
     {
         Schema::create('customer', function (Blueprint $table) {
             $table->id('customer_id');
-            $table->foreignId('user_id')->unique()->constrained('users')->restrictOnDelete();
+            $table->bigInteger('user_id');
             $table->string('full_name', 100);
-            $table->string('phone', 20)->unique();
+            $table->string('phone', 20);
             $table->string('address', 500)->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
+            $table->unique('user_id', 'uq_customer_user');
+            $table->unique('phone', 'uq_customer_phone');
+            $table->foreign('user_id', 'fk_customer_user')->references('id')->on('users');
         });
     }
 

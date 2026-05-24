@@ -17,7 +17,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'oracle'),
 
     /*
     |--------------------------------------------------------------------------
@@ -62,6 +62,32 @@ return [
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
+        ],
+
+        'oracle' => [
+            'driver' => 'oracle',
+            'tns' => env('DB_TNS', ''),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '1521'),
+            'database' => env('DB_DATABASE', 'FREEPDB1'),
+            'service_name' => env('DB_SERVICE_NAME', env('DB_DATABASE', 'FREEPDB1')),
+            'username' => env('DB_USERNAME', 'PET_HOTEL'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'AL32UTF8'),
+            'prefix' => env('DB_PREFIX', ''),
+            'prefix_schema' => env('DB_SCHEMA_PREFIX', ''),
+            'edition' => env('DB_EDITION', 'ora$base'),
+            'server_version' => env('DB_SERVER_VERSION', '11g'),
+            'load_balance' => env('DB_LOAD_BALANCE', 'yes'),
+            'max_name_len' => env('ORA_MAX_NAME_LEN', 30),
+            'dynamic' => [],
+            'sessionVars' => [
+                'NLS_TIME_FORMAT' => 'HH24:MI:SS',
+                'NLS_DATE_FORMAT' => 'YYYY-MM-DD HH24:MI:SS',
+                'NLS_TIMESTAMP_FORMAT' => 'YYYY-MM-DD HH24:MI:SS',
+                'NLS_TIMESTAMP_TZ_FORMAT' => 'YYYY-MM-DD HH24:MI:SS TZH:TZM',
+                'NLS_NUMERIC_CHARACTERS' => '.,',
+            ],
         ],
 
         'mariadb' => [

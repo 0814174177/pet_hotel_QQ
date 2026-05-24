@@ -12,10 +12,10 @@ return new class extends Migration
         Schema::create('order_details', function (Blueprint $table) {
             $table->id('order_detail_id');
 
-            $table->unsignedBigInteger('order_id');
+            $table->bigInteger('order_id');
 
-            $table->unsignedBigInteger('booking_room_id')->nullable();
-            $table->unsignedBigInteger('booking_service_pet_id')->nullable();
+            $table->bigInteger('booking_room_id')->nullable();
+            $table->bigInteger('booking_service_pet_id')->nullable();
 
             $table->string('title', 200);
             $table->integer('quantity')->default(1);
@@ -23,19 +23,18 @@ return new class extends Migration
             $table->decimal('line_total', 10, 2);
             $table->timestamps();
 
-            $table->foreign('order_id')
+            $table->foreign('order_id', 'fk_od_order')
                 ->references('order_id')
                 ->on('orders')
-                ->cascadeOnUpdate()
                 ->cascadeOnDelete();
 
             // Không dùng cascadeOnUpdate() / nullOnDelete()
             // vì 2 cột này đang được dùng trong CHECK constraint
-            $table->foreign('booking_room_id')
+            $table->foreign('booking_room_id', 'fk_od_booking_room')
                 ->references('booking_room_id')
                 ->on('booking_room');
 
-            $table->foreign('booking_service_pet_id')
+            $table->foreign('booking_service_pet_id', 'fk_od_bsp')
                 ->references('booking_service_pet_id')
                 ->on('booking_service_pet');
         });
