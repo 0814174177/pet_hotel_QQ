@@ -8,6 +8,8 @@ class Room extends Model
 {
     protected $table = 'room';
     protected $primaryKey = 'room_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

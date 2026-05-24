@@ -8,6 +8,8 @@ class BookingCouponLog extends Model
 {
     protected $table = 'booking_coupon_log';
     protected $primaryKey = 'booking_coupon_log_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

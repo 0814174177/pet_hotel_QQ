@@ -8,6 +8,8 @@ class BookingServicePet extends Model
 {
     protected $table = 'booking_service_pet';
     protected $primaryKey = 'booking_service_pet_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

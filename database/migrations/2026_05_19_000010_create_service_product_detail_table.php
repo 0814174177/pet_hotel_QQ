@@ -11,14 +11,14 @@ return new class extends Migration
     {
         Schema::create('service_product_detail', function (Blueprint $table) {
             $table->id('service_product_detail_id');
-            $table->unsignedBigInteger('service_id');
-            $table->unsignedBigInteger('product_id');
+            $table->bigInteger('service_id');
+            $table->bigInteger('product_id');
             $table->decimal('amount', 10, 2);
             $table->text('notes')->nullable();
             $table->timestamps();
-            $table->unique(['service_id', 'product_id']);
-            $table->foreign('service_id')->references('service_id')->on('services')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('product_id')->references('product_id')->on('product')->cascadeOnUpdate()->restrictOnDelete();
+            $table->unique(['service_id', 'product_id'], 'uq_spd_service_product');
+            $table->foreign('service_id', 'fk_spd_service')->references('service_id')->on('services');
+            $table->foreign('product_id', 'fk_spd_product')->references('product_id')->on('product');
         });
         DB::statement('ALTER TABLE service_product_detail ADD CONSTRAINT chk_spd_amount CHECK (amount > 0)');
     }

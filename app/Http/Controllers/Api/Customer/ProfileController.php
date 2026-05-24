@@ -8,7 +8,6 @@ use App\Models\Pet;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
@@ -83,7 +82,6 @@ class ProfileController extends Controller
 
         return response()->json([
             'data' => $customer->pets()
-                ->with('healthRecords')
                 ->orderBy('pet_name')
                 ->get(),
         ]);
@@ -95,17 +93,21 @@ class ProfileController extends Controller
 
         $validated = $request->validate([
             'pet_name' => ['required', 'string', 'max:255'],
-            'species' => ['required', 'string', 'max:50'],
+            'species' => ['required', Rule::in(['DOG', 'CAT', 'BIRD', 'RABBIT', 'OTHER'])],
             'breed' => ['nullable', 'string', 'max:100'],
-            'sex' => ['nullable', 'string', 'max:20'],
-            'weight_kg' => ['nullable', 'numeric', 'min:0', 'max:999.99'],
+            'sex' => ['nullable', Rule::in(['MALE', 'FEMALE', 'UNKNOWN'])],
+            'weight_kg' => ['nullable', 'numeric', 'min:0.1', 'max:999.99'],
             'special_note' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $pet = Pet::create([
-            ...$validated,
-            'pet_id' => 'PET'.now()->format('YmdHis').Str::upper(Str::random(4)),
             'customer_id' => $customer->customer_id,
+            'pet_name' => $validated['pet_name'],
+            'species' => $validated['species'],
+            'breed' => $validated['breed'] ?? null,
+            'sex' => $validated['sex'] ?? null,
+            'weight_kg' => $validated['weight_kg'] ?? null,
+            'special_notes' => $validated['special_note'] ?? null,
         ]);
 
         return response()->json([

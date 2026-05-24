@@ -8,6 +8,8 @@ class Customer extends Model
 {
     protected $table = 'customer';
     protected $primaryKey = 'customer_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

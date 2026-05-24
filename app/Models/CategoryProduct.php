@@ -8,6 +8,8 @@ class CategoryProduct extends Model
 {
     protected $table = 'category_product';
     protected $primaryKey = 'product_category_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 
