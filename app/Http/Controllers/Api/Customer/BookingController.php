@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\BookingRoom;
+use App\Models\BookingRoomPet;
 use App\Models\BookingServicePet;
 use App\Models\Branch;
 use App\Models\Customer;
@@ -83,7 +84,6 @@ class BookingController extends Controller
             'room_id' => ['nullable', Rule::exists('room', 'room_id')],
             'checkin_expected_at' => ['required', 'date'],
             'checkout_expected_at' => ['required', 'date', 'after:checkin_expected_at'],
-            'deposit_amount' => ['nullable', 'numeric', 'min:0'],
             'special_note' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -107,31 +107,27 @@ class BookingController extends Controller
             );
 
             $booking = Booking::create([
-                'booking_id' => $this->nextId(Booking::class, 'booking_id', 'BKG'),
                 'customer_id' => $customer->customer_id,
                 'branch_id' => $validated['branch_id'],
                 'checkin_expected_at' => $validated['checkin_expected_at'],
                 'checkout_expected_at' => $validated['checkout_expected_at'],
                 'status' => 'PENDING',
-                'deposit_amount' => $validated['deposit_amount'] ?? null,
-                'special_note' => $validated['special_note'] ?? null,
+                'special_notes' => $validated['special_note'] ?? null,
             ]);
 
             if (! empty($validated['room_id'])) {
                 $bookingRoom = BookingRoom::create([
-                    'booking_room_id' => $this->nextId(BookingRoom::class, 'booking_room_id', 'BKR'),
                     'booking_id' => $booking->booking_id,
                     'room_id' => $validated['room_id'],
                     'assigned_at' => now(),
-                    'note' => $validated['special_note'] ?? null,
+                    'notes' => $validated['special_note'] ?? null,
                 ]);
 
                 foreach ($validated['pet_ids'] as $petId) {
-                    DB::table('booking_room_pet')->insert([
+                    BookingRoomPet::create([
                         'booking_room_id' => $bookingRoom->booking_room_id,
                         'pet_id' => $petId,
-                        'assigned_at' => now(),
-                        'note' => $validated['special_note'] ?? null,
+                        'notes' => $validated['special_note'] ?? null,
                     ]);
                 }
             }
@@ -139,14 +135,13 @@ class BookingController extends Controller
             foreach ($validated['pet_ids'] as $petId) {
                 foreach ($validated['service_ids'] ?? [] as $serviceId) {
                     BookingServicePet::create([
-                        'booking_service_id' => $this->nextId(BookingServicePet::class, 'booking_service_id', 'BSP'),
                         'booking_id' => $booking->booking_id,
                         'service_id' => $serviceId,
                         'employee_id' => null,
                         'pet_id' => $petId,
                         'scheduled_at' => $validated['checkin_expected_at'],
                         'status' => 'PENDING',
-                        'note' => $validated['special_note'] ?? null,
+                        'notes' => $validated['special_note'] ?? null,
                     ]);
                 }
             }
@@ -306,15 +301,4 @@ class BookingController extends Controller
             ->implode(', ');
     }
 
-    private function nextId(string $modelClass, string $column, string $prefix): string
-    {
-        $lastId = $modelClass::query()
-            ->where($column, 'like', $prefix.'%')
-            ->orderByDesc($column)
-            ->value($column);
-
-        $nextNumber = $lastId ? ((int) substr($lastId, strlen($prefix))) + 1 : 1;
-
-        return $prefix.str_pad((string) $nextNumber, 3, '0', STR_PAD_LEFT);
-    }
 }

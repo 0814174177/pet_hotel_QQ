@@ -8,6 +8,8 @@ class AuditLog extends Model
 {
     protected $table = 'audit_log';
     protected $primaryKey = 'audit_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
     public $timestamps = false;
 
     protected $guarded = [];

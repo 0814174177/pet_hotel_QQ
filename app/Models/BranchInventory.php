@@ -8,6 +8,8 @@ class BranchInventory extends Model
 {
     protected $table = 'branch_inventory';
     protected $primaryKey = 'branch_inventory_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

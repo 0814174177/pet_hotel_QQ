@@ -17,12 +17,13 @@ return new class extends Migration
             $table->decimal('pet_weight_max_kg', 5, 2)->nullable();
             $table->decimal('base_price_per_day', 10, 2);
             $table->text('notes')->nullable();
-            $table->boolean('is_active')->default(true);
+            $table->tinyInteger('is_active')->default(1);
             $table->timestamps();
         });
         DB::statement('ALTER TABLE type_room ADD CONSTRAINT chk_type_room_max_slot CHECK (max_slot > 0)');
         DB::statement('ALTER TABLE type_room ADD CONSTRAINT chk_type_room_base_price CHECK (base_price_per_day >= 0)');
         DB::statement('ALTER TABLE type_room ADD CONSTRAINT chk_type_room_weight_range CHECK (pet_weight_min_kg IS NULL OR pet_weight_max_kg IS NULL OR pet_weight_max_kg >= pet_weight_min_kg)');
+        DB::statement('ALTER TABLE type_room ADD CONSTRAINT ck_type_room_active CHECK (is_active IN (0,1))');
     }
 
     public function down(): void

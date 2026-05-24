@@ -8,6 +8,8 @@ class Booking extends Model
 {
     protected $table = 'booking';
     protected $primaryKey = 'booking_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 
@@ -29,6 +31,17 @@ class Booking extends Model
     public function bookingServicePets()
     {
         return $this->hasMany(BookingServicePet::class, 'booking_id', 'booking_id');
+    }
+
+    public function rooms()
+    {
+        return $this->belongsToMany(Room::class, 'booking_room', 'booking_id', 'room_id', 'booking_id', 'room_id')
+            ->withPivot(['booking_room_id', 'assigned_at', 'notes']);
+    }
+
+    public function bookingServicesPet()
+    {
+        return $this->bookingServicePets();
     }
 
     public function orders()

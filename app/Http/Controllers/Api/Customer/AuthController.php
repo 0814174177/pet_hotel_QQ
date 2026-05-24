@@ -179,15 +179,4 @@ class AuthController extends Controller
         ]);
     }
 
-    private function nextId(string $modelClass, string $column, string $prefix): string
-    {
-        $lastId = $modelClass::query()
-            ->where($column, 'like', $prefix.'%')
-            ->orderByDesc($column)
-            ->value($column);
-
-        $nextNumber = $lastId ? ((int) substr($lastId, strlen($prefix))) + 1 : 1;
-
-        return $prefix.str_pad((string) $nextNumber, 3, '0', STR_PAD_LEFT);
-    }
 }

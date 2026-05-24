@@ -8,6 +8,8 @@ class Pet extends Model
 {
     protected $table = 'pet';
     protected $primaryKey = 'pet_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

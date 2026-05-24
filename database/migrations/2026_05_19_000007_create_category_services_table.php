@@ -11,10 +11,13 @@ return new class extends Migration
     {
         Schema::create('category_services', function (Blueprint $table) {
             $table->id('service_category_id');
-            $table->string('service_category_name', 100)->unique();
-            $table->boolean('is_active')->default(true);
+            $table->string('service_category_name', 100);
+            $table->tinyInteger('is_active')->default(1);
             $table->timestamps();
+            $table->unique('service_category_name', 'uq_cat_service_name');
         });
+
+        DB::statement('ALTER TABLE category_services ADD CONSTRAINT ck_cat_service_active CHECK (is_active IN (0,1))');
     }
 
     public function down(): void

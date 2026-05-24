@@ -11,20 +11,22 @@ return new class extends Migration
     {
         Schema::create('booking_service_pet', function (Blueprint $table) {
             $table->id('booking_service_pet_id');
-            $table->unsignedBigInteger('booking_id');
-            $table->unsignedBigInteger('pet_id');
-            $table->unsignedBigInteger('service_id');
-            $table->unsignedBigInteger('employee_id')->nullable();
+            $table->bigInteger('booking_id');
+            $table->bigInteger('pet_id');
+            $table->bigInteger('service_id');
+            $table->bigInteger('employee_id')->nullable();
             $table->dateTime('scheduled_at');
-            $table->enum('status', ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'DONE', 'CANCELLED'])->default('PENDING');
+            $table->string('status', 20)->default('PENDING');
             $table->text('notes')->nullable();
             $table->timestamps();
-            $table->index('status');
-            $table->foreign('booking_id')->references('booking_id')->on('booking')->cascadeOnUpdate()->cascadeOnDelete();
-            $table->foreign('pet_id')->references('pet_id')->on('pet')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('service_id')->references('service_id')->on('services')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('employee_id')->references('employee_id')->on('employee')->cascadeOnUpdate()->nullOnDelete();
+            $table->index('status', 'idx_bsp_status');
+            $table->foreign('booking_id', 'fk_bsp_booking')->references('booking_id')->on('booking')->cascadeOnDelete();
+            $table->foreign('pet_id', 'fk_bsp_pet')->references('pet_id')->on('pet');
+            $table->foreign('service_id', 'fk_bsp_service')->references('service_id')->on('services');
+            $table->foreign('employee_id', 'fk_bsp_employee')->references('employee_id')->on('employee')->nullOnDelete();
         });
+
+        DB::statement("ALTER TABLE booking_service_pet ADD CONSTRAINT ck_bsp_status CHECK (status IN ('PENDING','ASSIGNED','SCHEDULED','IN_PROGRESS','DONE','CANCELLED'))");
     }
 
     public function down(): void

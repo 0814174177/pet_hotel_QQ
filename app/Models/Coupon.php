@@ -8,6 +8,8 @@ class Coupon extends Model
 {
     protected $table = 'coupon';
     protected $primaryKey = 'coupon_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

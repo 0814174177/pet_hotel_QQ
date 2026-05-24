@@ -11,14 +11,14 @@ return new class extends Migration
     {
         Schema::create('booking_coupon_log', function (Blueprint $table) {
             $table->id('booking_coupon_log_id');
-            $table->unsignedBigInteger('booking_id');
-            $table->unsignedBigInteger('coupon_id');
+            $table->bigInteger('booking_id');
+            $table->bigInteger('coupon_id');
             $table->timestamp('applied_at')->useCurrent();
             $table->text('notes')->nullable();
             $table->timestamps();
-            $table->unique(['booking_id', 'coupon_id', 'applied_at']);
-            $table->foreign('booking_id')->references('booking_id')->on('booking')->cascadeOnUpdate()->cascadeOnDelete();
-            $table->foreign('coupon_id')->references('coupon_id')->on('coupon')->cascadeOnUpdate()->restrictOnDelete();
+            $table->unique(['booking_id', 'coupon_id', 'applied_at'], 'uq_bcl_booking_coupon_time');
+            $table->foreign('booking_id', 'fk_bcl_booking')->references('booking_id')->on('booking')->cascadeOnDelete();
+            $table->foreign('coupon_id', 'fk_bcl_coupon')->references('coupon_id')->on('coupon');
         });
     }
 

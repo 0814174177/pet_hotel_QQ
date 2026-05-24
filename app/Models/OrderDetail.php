@@ -8,6 +8,8 @@ class OrderDetail extends Model
 {
     protected $table = 'order_details';
     protected $primaryKey = 'order_detail_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

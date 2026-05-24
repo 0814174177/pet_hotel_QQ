@@ -11,31 +11,34 @@ return new class extends Migration
     {
         Schema::create('orders', function (Blueprint $table) {
             $table->id('order_id');
-            $table->unsignedBigInteger('customer_id');
-            $table->unsignedBigInteger('branch_id');
-            $table->unsignedBigInteger('booking_id')->nullable();
-            $table->unsignedBigInteger('created_by_emp')->nullable();
-            $table->foreignId('created_by_user_id')->constrained('users')->restrictOnDelete();
-            $table->unsignedBigInteger('coupon_id')->nullable();
-            $table->enum('payment_method', ['CASH', 'BANK_TRANSFER', 'MOMO', 'VNPAY', 'ZALOPAY', 'OTHER']);
-            $table->enum('status', ['PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED', 'REFUNDED'])->default('PENDING');
+            $table->bigInteger('customer_id');
+            $table->bigInteger('branch_id');
+            $table->bigInteger('booking_id')->nullable();
+            $table->bigInteger('created_by_emp')->nullable();
+            $table->bigInteger('created_by_user_id');
+            $table->bigInteger('coupon_id')->nullable();
+            $table->string('payment_method', 30);
+            $table->string('status', 20)->default('PENDING');
             $table->decimal('subtotal', 10, 2)->default(0);
             $table->decimal('discount_amount', 10, 2)->default(0);
             $table->decimal('grand_total', 10, 2)->default(0);
             $table->dateTime('paid_at')->nullable();
             $table->timestamps();
-            $table->index('status');
-            $table->foreign('customer_id')->references('customer_id')->on('customer')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('branch_id')->references('branch_id')->on('branch')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('booking_id')->references('booking_id')->on('booking')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('created_by_emp')->references('employee_id')->on('employee')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('coupon_id')->references('coupon_id')->on('coupon')->cascadeOnUpdate()->nullOnDelete();
+            $table->index('status', 'idx_orders_status');
+            $table->foreign('customer_id', 'fk_orders_customer')->references('customer_id')->on('customer');
+            $table->foreign('branch_id', 'fk_orders_branch')->references('branch_id')->on('branch');
+            $table->foreign('booking_id', 'fk_orders_booking')->references('booking_id')->on('booking');
+            $table->foreign('created_by_emp', 'fk_orders_employee')->references('employee_id')->on('employee');
+            $table->foreign('created_by_user_id', 'fk_orders_user')->references('id')->on('users');
+            $table->foreign('coupon_id', 'fk_orders_coupon')->references('coupon_id')->on('coupon')->nullOnDelete();
         });
+        DB::statement("ALTER TABLE orders ADD CONSTRAINT ck_orders_method CHECK (payment_method IN ('CASH','BANK_TRANSFER','MOMO','VNPAY','ZALOPAY','CARD','EWALLET','OTHER'))");
+        DB::statement("ALTER TABLE orders ADD CONSTRAINT ck_orders_status CHECK (status IN ('PENDING','PROCESSING','COMPLETED','PAID','PARTIAL','CANCELLED','REFUNDED'))");
         DB::statement('ALTER TABLE orders ADD CONSTRAINT chk_orders_subtotal CHECK (subtotal >= 0)');
         DB::statement('ALTER TABLE orders ADD CONSTRAINT chk_orders_discount CHECK (discount_amount >= 0)');
         DB::statement('ALTER TABLE orders ADD CONSTRAINT chk_orders_grand_total CHECK (grand_total >= 0)');
         DB::statement('ALTER TABLE orders ADD CONSTRAINT chk_orders_grand_calc CHECK (grand_total = subtotal - discount_amount)');
-        DB::statement('ALTER TABLE orders ADD CONSTRAINT chk_orders_paid_at CHECK ((status = \'COMPLETED\' AND paid_at IS NOT NULL) OR status != \'COMPLETED\')');
+        DB::statement('ALTER TABLE orders ADD CONSTRAINT chk_orders_paid_at CHECK ((status IN (\'COMPLETED\', \'PAID\') AND paid_at IS NOT NULL) OR status NOT IN (\'COMPLETED\', \'PAID\'))');
     }
 
     public function down(): void
