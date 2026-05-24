@@ -8,6 +8,8 @@ class BookingRoom extends Model
 {
     protected $table = 'booking_room';
     protected $primaryKey = 'booking_room_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

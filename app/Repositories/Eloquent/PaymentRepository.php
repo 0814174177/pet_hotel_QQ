@@ -39,6 +39,7 @@ use App\Models\BookingServicePet;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\Payment;
 use App\Models\User;
 use App\Repositories\Contracts\PaymentRepositoryInterface;
 use Carbon\Carbon;
@@ -205,8 +206,7 @@ class PaymentRepository implements PaymentRepositoryInterface
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Nếu order đã ở trạng thái cuối thì không xử lý lại, giúp thao tác thanh toán có tính idempotent tương đối.
-            if (in_array($order->status, ['COMPLETED', 'CANCELLED', 'REFUNDED'], true)) {
+            if (in_array($order->status, ['COMPLETED', 'PAID', 'CANCELLED', 'REFUNDED'], true)) {
                 return $booking->fresh();
             }
 
@@ -227,10 +227,20 @@ class PaymentRepository implements PaymentRepositoryInterface
                 'paid_at' => now(),
             ]);
 
-            // Sau khi thanh toán, tận dụng thông tin contact để bổ sung user/customer nếu trước đó còn thiếu.
-            $this->fillMissingCustomerContact($user, $contact);
+            if ((float) $order->grand_total > 0) {
+                Payment::updateOrCreate(
+                    ['order_id' => $order->order_id],
+                    [
+                        'payment_method' => $databasePaymentMethod,
+                        'provider' => null,
+                        'amount' => $order->grand_total,
+                        'status' => 'SUCCESS',
+                        'paid_at' => $order->paid_at,
+                        'note' => 'Thanh toan booking qua web.',
+                    ]
+                );
+            }
 
-            // Nếu có coupon hợp lệ, tăng số lượt dùng và ghi log để hệ thống có lịch sử áp dụng mã.
             if ($coupon) {
                 $coupon->increment('used_count');
 
@@ -1170,6 +1180,7 @@ class PaymentRepository implements PaymentRepositoryInterface
             'customer.user',
             'branch',
             'coupon',
+            'payment',
             'booking.bookingRooms.room.typeRoom',
             'details.bookingRoom.room.typeRoom',
             'details.bookingServicePet.service',

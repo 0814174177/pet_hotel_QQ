@@ -8,6 +8,8 @@ class TypeRoom extends Model
 {
     protected $table = 'type_room';
     protected $primaryKey = 'type_room_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 

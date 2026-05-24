@@ -8,6 +8,8 @@ class Service extends Model
 {
     protected $table = 'services';
     protected $primaryKey = 'service_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 
@@ -19,6 +21,12 @@ class Service extends Model
     public function serviceProductDetails()
     {
         return $this->hasMany(ServiceProductDetail::class, 'service_id', 'service_id');
+    }
+
+    public function products()
+    {
+        return $this->belongsToMany(Product::class, 'service_product_detail', 'service_id', 'product_id', 'service_id', 'product_id')
+            ->withPivot(['service_product_detail_id', 'amount', 'notes']);
     }
 
     public function bookingServicePets()

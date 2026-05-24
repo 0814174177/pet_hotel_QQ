@@ -8,6 +8,8 @@ class ServiceProductDetail extends Model
 {
     protected $table = 'service_product_detail';
     protected $primaryKey = 'service_product_detail_id';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $guarded = [];
 
